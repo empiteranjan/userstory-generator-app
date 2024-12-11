@@ -1,42 +1,107 @@
-import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+interface UserStory {
+  title: string;
+  action: string;
+  benefit: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
+interface Feature {
+  title: string;
+  description: string;
+  userStories: UserStory[];
+}
+
+interface Epic {
+  title: string;
+  description: string;
+  features: Feature[];
+}
+
+interface CreateProjectRequest {
+  title: string;
+  description: string;
+  epics: Epic[];
+}
 
 export async function POST(req: Request) {
   try {
-    const { projectDetails } = await req.json();
+    const { title, description, epics } = await req.json() as CreateProjectRequest;
 
-    const prompt = `Given the following project details:
+    if (!title || !description) {
+      return NextResponse.json(
+        { error: 'Title and description are required' },
+        { status: 400 }
+      );
+    }
 
-${projectDetails}
-
-1. First, identify and list all the key personas and roles that would interact with this system. For each persona, provide:
-   - Role name/title
-   - Brief description of their responsibilities
-   - Their main goals in the system
-
-2. Then, generate a comprehensive list of user stories for each identified persona in the format:
-   "As a [identified persona], I want to [action] so that [benefit]"
-
-Generate at least 2-3 detailed user stories for each identified persona, ensuring they cover different aspects of the project.`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        { 
-          role: "system", 
-          content: "You are a skilled product manager who first analyzes stakeholders and then creates detailed user stories. Format your response with clear sections for Personas and User Stories, using markdown for better readability." 
-        },
-        { role: "user", content: prompt }
-      ],
+    // Create project with all related data
+    const project = await prisma.project.create({
+      data: {
+        title,
+        description,
+        epics: {
+          create: epics.map((epic) => ({
+            title: epic.title,
+            description: epic.description,
+            status: 'PLANNED',
+            features: {
+              create: epic.features.map((feature) => ({
+                title: feature.title,
+                description: feature.description,
+                status: 'PLANNED',
+                userStories: {
+                  create: feature.userStories.map((story) => ({
+                    title: story.title,
+                    action: story.action,
+                    benefit: story.benefit,
+                    acceptanceCriteria: '[]',
+                    priority: story.priority,
+                    status: 'BACKLOG',
+                    // Create a default persona for now
+                    persona: {
+                      create: {
+                        roleName: 'User',
+                        responsibilities: 'General system user',
+                        goals: 'Accomplish tasks efficiently'
+                      }
+                    }
+                  }))
+                }
+              }))
+            }
+          }))
+        }
+      },
+      include: {
+        epics: {
+          include: {
+            features: {
+              include: {
+                userStories: {
+                  include: {
+                    persona: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     });
 
-    return NextResponse.json({ userStories: completion.choices[0].message.content });
+    return NextResponse.json({ 
+      project,
+      success: true 
+    });
+
   } catch (error) {
-    console.error('Error:', error);
-    return NextResponse.json({ error: 'Failed to generate user stories' }, { status: 500 });
+    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+    return NextResponse.json(
+      { error: 'Failed to create project. Please try again.' },
+      { status: 500 }
+    );
   }
 } 

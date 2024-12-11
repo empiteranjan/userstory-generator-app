@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id          Int       @id @default(autoincrement())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  title       String
+  description String
+  personas    Persona[]
+  epics       Epic[]
+}
+
+model Persona {
+  id               Int         @id @default(autoincrement())
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  roleName         String
+  responsibilities String
+  goals            String
+  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId        Int
+  userStories      UserStory[]
+
+  @@index([projectId])
+}
+
+model Epic {
+  id          Int       @id @default(autoincrement())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  title       String
+  description String
+  status      String    @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   Int
+  features    Feature[]
+
+  @@index([projectId])
+}
+
+model Feature {
+  id          Int         @id @default(autoincrement())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  title       String
+  description String
+  status      String      @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED
+  epic        Epic        @relation(fields: [epicId], references: [id], onDelete: Cascade)
+  epicId      Int
+  userStories UserStory[]
+
+  @@index([epicId])
+}
+
+model UserStory {
+  id                Int       @id @default(autoincrement())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  title             String    // Short description
+  action            String
+  benefit           String
+  persona           Persona   @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  personaId         Int
+  feature           Feature?  @relation(fields: [featureId], references: [id])
+  featureId         Int?
+  acceptanceCriteria String   // Stored as JSON string
+  priority          String    @default("MEDIUM") // HIGH, MEDIUM, LOW
+  status            String    @default("BACKLOG") // BACKLOG, READY, IN_PROGRESS, DONE
+  storyPoints       Int?
+  
+  @@index([personaId])
+  @@index([featureId])
+}
